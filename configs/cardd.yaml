@@ -1,0 +1,10 @@
+path: /scratch/ds3424/cardd/yolo
+train: images/train
+val: images/val
+test: images/test
+
+nc: 6
+names: [dent, scratch, crack, glass_shatter, lamp_broken, tire_flat]
+
+# Class instance counts for class-balanced loss
+class_counts: [1847, 2560, 659, 424, 429, 225]
