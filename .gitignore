@@ -1,0 +1,46 @@
+# ── HPC / cluster ────────────────────────────────────────────
+slurm/
+*.sh
+
+# ── Model weights & checkpoints ──────────────────────────────
+*.pt
+*.pth
+checkpoints/
+weights/
+
+# ── Run outputs ───────────────────────────────────────────────
+logs/
+wandb/
+runs/
+
+# ── Secrets ───────────────────────────────────────────────────
+.env
+configs/private_*.yaml
+
+# ── Dataset (downloaded separately) ──────────────────────────
+data/
+pretrain_cars/
+
+# ── Python cache ─────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# ── Virtual environments ──────────────────────────────────────
+.venv/
+venv/
+env/
+
+# ── IDE ───────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+
+# ── OS ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

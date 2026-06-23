@@ -1,0 +1,44 @@
+# XCarDamageNet — Default Physics Encoder Pre-training Configuration
+# All values are overridable via CLI args in scripts/pretrain_physics.py.
+#
+# Pre-training trains PhysicsTokenEncoder heads (normal/material/reflectance/
+# curvature) using Masked Autoencoder (MAE, He et al. CVPR 2022) on unlabeled
+# car images. DINOv2 backbone is frozen throughout.
+
+# ── Data ─────────────────────────────────────────────────────────────────────
+data_dir:         null        # REQUIRED: directory of unlabeled car images
+output_dir:       null        # REQUIRED: where to write loss curves and flags
+checkpoint_dir:   null        # REQUIRED: where to save .pt checkpoints
+
+# Optional: continue from a previous run.
+resume:           null
+
+# ── Image ────────────────────────────────────────────────────────────────────
+image_size: 518               # DINOv2 native resolution; do not change
+
+# ── MAE settings ─────────────────────────────────────────────────────────────
+mask_ratio: 0.75              # Fraction of patches masked per image (MAE default)
+# Patch size is fixed at 14 (DINOv2 ViT-S/14).
+# Decoder: 2-layer MLP 396 → 256 → (14²×3 = 588), trained only during pre-training.
+
+# ── Training schedule ────────────────────────────────────────────────────────
+epochs:       200             # Pre-training epochs (longer than fine-tuning)
+batch_size:    64             # Larger batch is fine — backbone is frozen
+num_workers:    4             # DataLoader workers
+
+# ── Optimiser ────────────────────────────────────────────────────────────────
+lr:        0.00015            # Base AdamW learning rate (1.5e-4)
+# weight_decay: 0.05 (hardcoded — consistent with fine-tuning)
+warmup_epochs: 10             # Linear warm-up before cosine decay
+# Cosine decay to eta_min=1e-6 over (epochs - warmup_epochs) steps
+
+# ── Mixed precision ───────────────────────────────────────────────────────────
+amp: false                    # Disabled — NaN risk on V100 GPUs
+
+# ── Checkpointing ────────────────────────────────────────────────────────────
+save_every:  20               # Checkpoint frequency (epochs)
+# Creates pretrain_complete.flag in output_dir when all epochs finish.
+# Best checkpoint (lowest loss) is always saved separately.
+
+# ── HPC / walltime ────────────────────────────────────────────────────────────
+time_limit: null              # Stop after N hours (saves checkpoint, resumes cleanly)

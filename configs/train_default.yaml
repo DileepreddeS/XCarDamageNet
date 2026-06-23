@@ -1,0 +1,59 @@
+# XCarDamageNet — Default Training Configuration
+# All values are overridable via CLI args in scripts/train_cardd.py.
+# These defaults reproduce the reported v2 results on CarDD.
+
+# ── Data ─────────────────────────────────────────────────────────────────────
+data_dir:         null        # REQUIRED: path to CarDD root (set via CLI)
+output_dir:       null        # REQUIRED: run output directory (logs, curves)
+checkpoint_dir:   null        # REQUIRED: where to save .pt files
+
+# Pre-trained physics encoder weights (from pretrain_physics.py).
+# If null, physics heads are randomly initialised.
+physics_checkpoint: null
+
+# Path to an existing checkpoint to resume training from.
+resume:           null
+
+# ── Image ────────────────────────────────────────────────────────────────────
+image_size: 518               # DINOv2 native resolution; do not change
+
+# ── Training schedule ────────────────────────────────────────────────────────
+epochs:          150          # Total fine-tuning epochs
+patience:         30          # Early-stop patience (val mAP@0.5 plateau)
+batch_size:        8          # Per-GPU batch size (8 fits 40 GB A100)
+num_workers:       4          # DataLoader workers
+
+# ── Optimiser ────────────────────────────────────────────────────────────────
+lr:           0.0001          # Base learning rate for AdamW (1e-4)
+weight_decay: 0.05            # AdamW weight decay
+warmup_epochs:     5          # Linear LR warm-up (cosine decay starts after)
+# Cosine decay target: 1e-6 (hardcoded in trainer)
+
+# ── Backbone freeze schedule ─────────────────────────────────────────────────
+# DINOv2 is frozen for the first N epochs to let the task-specific modules
+# initialise, then the last 2 blocks + norm are unfrozen at lr×0.1.
+freeze_backbone_epochs: 30
+
+# ── Mixed precision ───────────────────────────────────────────────────────────
+# DISABLED: NaN losses observed with AMP on V100 GPUs.
+amp: false
+
+# ── Augmentation ─────────────────────────────────────────────────────────────
+# Probabilities applied per batch/image.
+copy_paste: 0.30    # Class-aware copy-paste (only rare classes: crack/glass/lamp/tire)
+mosaic:     1.00    # YOLOv5-style mosaic (4-image) — always on during training
+mixup:      0.10    # MixUp between two images
+
+# ── Loss weights ──────────────────────────────────────────────────────────────
+# Combined loss: W_box*L_box + W_cls*L_cls + W_dfl*L_dfl
+#              + W_attn*L_attn + W_contrast*L_contrast + W_physics*L_physics
+loss_box:     7.5   # ShapeAwareCIoU — dominant; shape ratios always [0,1]
+loss_cls:     0.5   # ClassBalancedBCE with effective-number weights (beta=0.9999)
+loss_dfl:     1.5   # Distribution Focal Loss (reg_max=16)
+loss_attn:    0.10  # AttentionSupervisionLoss (BCE vs GT binary masks)
+loss_contrast: 0.05 # ContrastiveTripletLoss (margin=1.0)
+loss_physics:  0.02 # PhysicsConsistencyLoss (CE with detached soft labels)
+
+# ── Checkpointing ────────────────────────────────────────────────────────────
+save_period: 10    # Save latest checkpoint every N epochs (best always saved)
+time_limit: null   # Stop after N hours if set (for HPC walltime limits)
