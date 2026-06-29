@@ -99,7 +99,7 @@ class ClassBalancedBCELoss(nn.Module):
 
         # Apply class-balanced weights
         # Broadcast class_weights to match bce shape
-        weighted = bce * self.class_weights  # broadcasting over last dim
+        weighted = bce * self.class_weights.to(bce.device)  # broadcasting over last dim
 
         if self.reduction == "mean":
             return weighted.mean()
@@ -116,4 +116,4 @@ class ClassBalancedBCELoss(nn.Module):
         Returns:
             weights: (N,) per-sample weights
         """
-        return self.class_weights[class_ids.clamp(0, len(_CARDD_COUNTS) - 1)]
+        return self.class_weights.to(class_ids.device)[class_ids.clamp(0, len(_CARDD_COUNTS) - 1)]

@@ -151,7 +151,7 @@ class ShapeAwareCIoULoss(nn.Module):
         penalty = _shape_penalty(pred_w, pred_h, gt_w, gt_h, eps)  # (N,)
 
         # Per-class shape penalty weight
-        cls_w = self.shape_weights[class_ids.clamp(0, 5)]  # (N,)
+        cls_w = self.shape_weights.to(class_ids.device)[class_ids.clamp(0, 5)]  # (N,)
 
         # Class-balanced sample weights
         if cb_weights is None:

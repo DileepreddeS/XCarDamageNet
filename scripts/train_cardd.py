@@ -377,13 +377,23 @@ def train(args: argparse.Namespace) -> None:
             if pred_boxes is None or pred_boxes.numel() == 0:
                 continue
 
+            # Align fraud_implied with pred_cls dimensions
+            # fraud_implied: (D, 6) from model detections
+            # pred_cls: (N, 6) from target assigner (N = total GT boxes)
+            # Fix: average fraud_implied to (1,6), expand to (N,6)
+            # Same averaging method target assigner uses for pred_cls
+            _fraud = outputs.get("fraud_implied")
+            if _fraud is not None and pred_cls is not None:
+                if _fraud.shape[0] != pred_cls.shape[0]:
+                    _fraud = _fraud.mean(dim=0, keepdim=True).expand(pred_cls.shape[0], -1)
+
             # Loss
             losses = loss_fn(
                 pred_boxes, gt_boxes, class_ids, pred_cls, gt_cls,
                 attn_maps=outputs.get("attn_maps"),
                 gt_boxes_list=[t["boxes"].to(device) for t in targets],
                 gt_classes_list=[t["classes"].to(device) for t in targets],
-                physics_implied=outputs.get("fraud_implied"),
+                physics_implied=_fraud,
                 predicted_class_logits=pred_cls,
             )
 
