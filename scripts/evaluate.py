@@ -191,7 +191,17 @@ def evaluate(args: argparse.Namespace) -> dict:
     print(f"Data:       {args.data_dir} / {args.split}")
 
     # ── Load model ────────────────────────────────────────────
-    ckpt = torch.load(args.checkpoint, map_location=device)
+    ckpt_path = Path(args.checkpoint)
+    if not ckpt_path.exists():
+        alt = ckpt_path.parent / "latest.pt"
+        if alt.exists():
+            print(f"WARNING: {ckpt_path.name} not found — falling back to {alt.name}")
+            ckpt_path = alt
+        else:
+            print(f"ERROR: Checkpoint not found: {ckpt_path}")
+            sys.exit(1)
+
+    ckpt = torch.load(str(ckpt_path), map_location=device)
     model = XCarDamageNet(img_size=args.image_size, pretrained_backbone=False)
 
     state = ckpt.get("model_state_dict", ckpt)

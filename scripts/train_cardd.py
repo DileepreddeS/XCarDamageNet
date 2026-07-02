@@ -110,6 +110,40 @@ def _load_checkpoint(
 # Validation
 # ─────────────────────────────────────────────────────────────
 
+def _nms(
+    boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float = 0.45
+) -> torch.Tensor:
+    """Greedy NMS. Returns indices of kept detections sorted by score."""
+    if boxes.shape[0] == 0:
+        return torch.zeros(0, dtype=torch.long, device=boxes.device)
+
+    order = scores.argsort(descending=True).tolist()
+    suppressed = torch.zeros(boxes.shape[0], dtype=torch.bool, device=boxes.device)
+    kept = []
+
+    for i in order:
+        if suppressed[i]:
+            continue
+        kept.append(i)
+        bi = boxes[i]  # (4,)
+
+        # Vectorised IoU: bi vs all boxes
+        ix1 = torch.max(bi[0], boxes[:, 0])
+        iy1 = torch.max(bi[1], boxes[:, 1])
+        ix2 = torch.min(bi[2], boxes[:, 2])
+        iy2 = torch.min(bi[3], boxes[:, 3])
+        inter = (ix2 - ix1).clamp(min=0) * (iy2 - iy1).clamp(min=0)
+        area_i = (bi[2] - bi[0]) * (bi[3] - bi[1])
+        area_j = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+        iou = inter / (area_i + area_j - inter + 1e-7)
+
+        # Suppress overlapping boxes (not i itself)
+        iou[i] = 0.0
+        suppressed |= iou > iou_threshold
+
+    return torch.tensor(kept, dtype=torch.long, device=boxes.device)
+
+
 @torch.no_grad()
 def validate(
     model: nn.Module,
@@ -126,25 +160,61 @@ def validate(
         images = images.to(device)
         outputs = model(images, training=False)
 
-        det = outputs["det_p3"]  # (B, 5+C, H, W) finest scale
-        B = det.shape[0]
+        det = outputs["det_p3"]   # (B, 5+C, H, W) finest scale
+        B, CH, H, W = det.shape
+
+        # Grid indices for box decoding — built once per batch
+        gy, gx = torch.meshgrid(
+            torch.arange(H, device=device, dtype=torch.float32),
+            torch.arange(W, device=device, dtype=torch.float32),
+            indexing="ij",
+        )
+        gx_flat = gx.view(-1)  # (H*W,)
+        gy_flat = gy.view(-1)
 
         for b in range(B):
-            pred_map = det[b]
-            obj = torch.sigmoid(pred_map[0]).view(-1)           # (HW,)
-            cls_logits = pred_map[5:].view(pred_map.shape[0] - 5, -1).T  # (HW, C)
+            pred_map = det[b]  # (CH, H, W)
+
+            obj = torch.sigmoid(pred_map[0]).view(-1)  # (H*W,)
+
+            # Decode box coordinates (anchor-free, normalised [0,1])
+            x_off = torch.sigmoid(pred_map[1]).view(-1)
+            y_off = torch.sigmoid(pred_map[2]).view(-1)
+            bw    = torch.sigmoid(pred_map[3]).view(-1)
+            bh    = torch.sigmoid(pred_map[4]).view(-1)
+
+            cx = (gx_flat + x_off) / W
+            cy = (gy_flat + y_off) / H
+            x1 = (cx - bw / 2).clamp(0.0, 1.0)
+            y1 = (cy - bh / 2).clamp(0.0, 1.0)
+            x2 = (cx + bw / 2).clamp(0.0, 1.0)
+            y2 = (cy + bh / 2).clamp(0.0, 1.0)
+            boxes = torch.stack([x1, y1, x2, y2], dim=1)  # (H*W, 4)
+
+            # Class scores
+            cls_logits = pred_map[5:].view(CH - 5, -1).T  # (H*W, C)
             cls_probs = torch.softmax(cls_logits, dim=-1)
             scores, classes = cls_probs.max(dim=-1)
             scores = scores * obj
 
             keep = scores > conf_threshold
-            # Dummy boxes (no proper coordinate decoding yet — zero boxes)
-            n_keep = keep.sum().item()
-            all_preds.append({
-                "boxes":   torch.zeros(n_keep, 4),
-                "scores":  scores[keep].cpu(),
-                "classes": classes[keep].cpu(),
-            })
+            if keep.sum() > 0:
+                kb = boxes[keep]
+                ks = scores[keep]
+                kc = classes[keep]
+                nms_idx = _nms(kb, ks, iou_threshold=0.45)
+                all_preds.append({
+                    "boxes":   kb[nms_idx].cpu(),
+                    "scores":  ks[nms_idx].cpu(),
+                    "classes": kc[nms_idx].cpu(),
+                })
+            else:
+                all_preds.append({
+                    "boxes":   torch.zeros(0, 4),
+                    "scores":  torch.zeros(0),
+                    "classes": torch.zeros(0, dtype=torch.long),
+                })
+
             all_targets.append({
                 "boxes":   targets[b]["boxes"],
                 "classes": targets[b]["classes"],
